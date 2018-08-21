@@ -1,3 +1,0 @@
-F0820 14:25:54.489721   17376 proxy.go:155] listen tcp 192.168.34.10:443: bind: permission denied
-Starting to serve on 192.168.34.10:443
-F0820 14:32:03.055414   19122 proxy.go:155] listen tcp 192.168.34.10:443: bind: permission denied
