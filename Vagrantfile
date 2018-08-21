@@ -31,10 +31,6 @@ $k8s_api_port = "6443"                      # This is the default Kubernetes API
 ## Infrastructure
 $box_image = "ubuntu/xenial64"
 
-## Canal
-$canal_rbac_url = "https://raw.githubusercontent.com/projectcalico/canal/master/k8s-install/1.7/rbac.yaml"
-$canal_url = "https://raw.githubusercontent.com/projectcalico/canal/master/k8s-install/1.7/canal.yaml"
-
 ## Scripts
 $build_prereq = <<SCRIPT
 echo "...Setting network and swap memory..."
@@ -75,6 +71,7 @@ deb http://apt.kubernetes.io/ kubernetes-xenial main
 EOF
 
 apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y \
     kubelet \
     kubeadm \
@@ -90,19 +87,10 @@ kubeadm init \
     --token-ttl=0
 SCRIPT
 
-$kubectl_canal2 = <<SCRIPT
-echo "...Configuring CNI plug-in..."
-kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f #{$canal_rbac_url}
-wget -q #{$canal_url} -P /tmp
-sed 's/canal_iface: ""/canal_iface: "enp0s8"/' -i /tmp/canal.yaml
-kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f /tmp/canal.yaml
-SCRIPT
-
-
 $kubectl_canal = <<SCRIPT
 echo "...Configuring Network..."
 sleep 5
-kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+su - #{$vagrant_user} -c 'kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml'
 SCRIPT
 
 $kubeadm_join = <<SCRIPT
@@ -147,6 +135,7 @@ Vagrant.configure("2") do |config|
         nfs.vm.hostname = "nfs"
         nfs.vm.network :private_network, ip: "#{$network}.9"
         nfs.vm.provider "virtualbox" do |vb|
+#            vb.name = "k8s-nfs"
             vb.memory = $nfs_memory
             vb.cpus = $nfs_cpu
             vb.linked_clone = $linked_clone
@@ -158,10 +147,6 @@ Vagrant.configure("2") do |config|
             end
             vb.customize ['storageattach', :id,  '--storagectl', 'SCSI', '--port', 2, '--type', 'hdd', '--medium', file_to_disk]
         end
-        $hosts_nfs_config2 = <<-SCRIPT
-        echo "...Configuring /etc/hosts"
-        sed 's/127.0.0.1.*nfs*/#{$network}.9 nfs/' -i /etc/hosts
-        SCRIPT
 
         $hosts_nfs_config = <<-SCRIPT
         echo "...Configuring /etc/hosts"
@@ -181,17 +166,13 @@ Vagrant.configure("2") do |config|
         master.vm.hostname = "master"
         master.vm.network :private_network, ip: "#{$network}.10"
         master.vm.provider "virtualbox" do |vb|
+#            vb.name = "k8s-master"            
             vb.memory = $master_memory
             vb.cpus = $master_cpu
             vb.linked_clone = $linked_clone
             vb.customize ["modifyvm", :id, "--macaddress1", "auto"]
             vb.customize ["modifyvm", :id, "--vram", "7"]
         end
-        $hosts_master_config2 = <<-SCRIPT
-        echo "...Configuring /etc/hosts"
-        sed 's/127.0.0.1.*master*/#{$network}.10 master/' -i /etc/hosts
-        SCRIPT
-
 
         $hosts_master_config = <<-SCRIPT
         echo "...Configuring /etc/hosts"
@@ -217,16 +198,13 @@ Vagrant.configure("2") do |config|
             node.vm.hostname = "node#{i}"
             node.vm.network :private_network, ip: "#{$network}.#{i + 10}"
             node.vm.provider "virtualbox" do |vb|
+#                vb.name = "k8s-node#{i}"
                 vb.memory = $node_memory
                 vb.cpus = $node_cpu
                 vb.linked_clone = $linked_clone
                 vb.customize ["modifyvm", :id, "--macaddress1", "auto"]
                 vb.customize ["modifyvm", :id, "--vram", "7"]
             end
-            $hosts_node_config2 = <<-SCRIPT
-            echo "...Configuring /etc/hosts..."
-            sed 's/127.0.0.1.*node#{i}*/#{$network}.#{i + 10} node#{i}/' -i /etc/hosts
-            SCRIPT
 
             $hosts_node_config = <<-SCRIPT
             echo "...Configuring /etc/hosts"
@@ -243,4 +221,4 @@ Vagrant.configure("2") do |config|
             SHELL
         end         
     end
-end    
+end
